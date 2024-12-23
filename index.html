@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Web to EPUB</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+        }
+        textarea {
+            width: 100%;
+            height: 100px;
+            margin-bottom: 20px;
+        }
+        button {
+            padding: 10px 20px;
+            font-size: 16px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <h1>Web to EPUB Converter</h1>
+    <textarea id="urlInput" placeholder="Enter webpage URLs (comma-separated)"></textarea>
+    <button onclick="generateEPUB()">Generate EPUB</button>
+    <p id="status"></p>
+
+    <script src="https://cdn.jsdelivr.net/npm/jszip/dist/jszip.min.js"></script>
+    <script>
+        async function fetchPageContent(url) {
+            try {
+                const response = await fetch(url);
+                const html = await response.text();
+                const parser = new DOMParser();
+                const doc = parser.parseFromString(html, 'text/html');
+                // Modify the selector below based on the structure of the target website
+                const content = doc.querySelector('body').innerText;
+                return content;
+            } catch (error) {
+                console.error(`Error fetching ${url}:`, error);
+                return `Failed to fetch content from ${url}`;
+            }
+        }
+
+        async function generateEPUB() {
+            const urls = document.getElementById('urlInput').value.split(',');
+            const zip = new JSZip();
+            let status = document.getElementById('status');
+            status.textContent = 'Fetching content...';
+
+            for (let i = 0; i < urls.length; i++) {
+                const url = urls[i].trim();
+                const content = await fetchPageContent(url);
+                zip.file(`chapter${i + 1}.html`, `<h1>Chapter ${i + 1}</h1><p>${content}</p>`);
+            }
+
+            status.textContent = 'Generating EPUB...';
+
+            // Create a simple EPUB structure
+            const container = `<?xml version="1.0" encoding="UTF-8"?>
+            <container xmlns="urn:oasis:names:tc:opendocument:xmlns:container" version="1.0">
+                <rootfiles>
+                    <rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/>
+                </rootfiles>
+            </container>`;
+            zip.file('META-INF/container.xml', container);
+
+            // Add a basic content.opf file
+            const contentOpf = `<?xml version="1.0" encoding="UTF-8"?>
+            <package xmlns="http://www.idpf.org/2007/opf" unique-identifier="BookId" version="2.0">
+                <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
+                    <dc:title>Generated EPUB</dc:title>
+                    <dc:language>en</dc:language>
+                </metadata>
+                <manifest>
+                    ${urls.map((_, i) => `<item id="chapter${i + 1}" href="chapter${i + 1}.html" media-type="application/xhtml+xml"/>`).join('\n')}
+                </manifest>
+                <spine>
+                    ${urls.map((_, i) => `<itemref idref="chapter${i + 1}"/>`).join('\n')}
+                </spine>
+            </package>`;
+            zip.file('OEBPS/content.opf', contentOpf);
+
+            const blob = await zip.generateAsync({ type: 'blob' });
+            const downloadLink = document.createElement('a');
+            downloadLink.href = URL.createObjectURL(blob);
+            downloadLink.download = 'output.epub';
+            downloadLink.textContent = 'Download EPUB';
+            document.body.appendChild(downloadLink);
+
+            status.textContent = 'EPUB generated!';
+        }
+    </script>
+</body>
+</html>
